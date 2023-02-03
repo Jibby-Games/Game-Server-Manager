@@ -1,5 +1,4 @@
 import docker
-import uvicorn
 from socket import socket
 from fastapi import FastAPI
 

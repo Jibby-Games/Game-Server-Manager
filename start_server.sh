@@ -1,3 +1,3 @@
 #!/bin/sh
 . ./venv/bin/activate
-uvicorn main:app
+uvicorn app.main:app --reload

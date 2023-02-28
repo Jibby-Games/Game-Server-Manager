@@ -4,7 +4,7 @@ from socket import socket
 from fastapi import FastAPI
 from app.config import log
 
-IMAGE_NAME = "flappyrace"
+IMAGE_NAME = "jibby/flappyrace"
 
 log.init_loggers(__name__)
 logger = logging.getLogger(__name__)

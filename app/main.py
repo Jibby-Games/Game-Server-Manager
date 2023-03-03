@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.config import log
 
 IMAGE_NAME = "jibby/flappyrace"
+MAX_CONTAINER_RETRIES = 10
 
 log.init_loggers(__name__)
 logger = logging.getLogger(__name__)
@@ -51,18 +52,31 @@ def check_images_pulled():
 def create_server():
     client = docker.from_env()
     check_images_pulled()
-    logger.info(f"Creating '{IMAGE_NAME}' container...")
-    port = find_free_port()
-    container = client.containers.create(
-        image=IMAGE_NAME,
-        tty=True,
-        ports={f"{port}/udp": ("0.0.0.0", port), f"{port}/tcp": ("0.0.0.0", port)},
-        detach=True,
-        environment=[f"FLAPPY_PORT={port}"],
-    )
-    logger.info(f"Starting container {container.id}...")
-    container.start()
-    containers[container.id] = container
+    for attempt in range(MAX_CONTAINER_RETRIES):
+        try:
+            logger.info(f"Running '{IMAGE_NAME}' container (attempt: {attempt})...")
+            port = find_free_port()
+            container = client.containers.run(
+                image=IMAGE_NAME,
+                tty=True,
+                ports={
+                    f"{port}/udp": ("0.0.0.0", port),
+                    f"{port}/tcp": ("0.0.0.0", port),
+                },
+                detach=True,
+                environment=[f"FLAPPY_PORT={port}"],
+            )
+        except Exception as err:
+            logger.warning(f"Failed to start container will try again. Reason: {err}")
+        else:
+            # Container running successfully, save it for later
+            logger.info(f"Server container {container.id} started")
+            containers[container.id] = container
+            break
+    else:
+        logger.error(
+            f"Failed to create container after {MAX_CONTAINER_RETRIES} attempts - stopping."
+        )
     return port
 
 

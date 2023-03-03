@@ -1,16 +1,18 @@
 import docker
 import logging
 from socket import socket
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
 from app.config import log
 
 IMAGE_NAME = "jibby/flappyrace"
 MAX_CONTAINER_RETRIES = 10
+MAX_RUNNING_SERVERS = 20
 
 log.init_loggers(__name__)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+docker_client = docker.from_env()
 containers = {}
 
 
@@ -19,10 +21,16 @@ async def read_root():
     return {"Hello": "World"}
 
 
-@app.get("/api/request")
+@app.get("/api/request", status_code=status.HTTP_201_CREATED)
 async def request_game():
+    remove_stopped_containers()
+    if len(containers) >= MAX_RUNNING_SERVERS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Max amount of official servers reached! Try joining a public one.",
+        )
     port = create_server()
-    return port
+    return {"port": port}
 
 
 @app.on_event("startup")
@@ -36,27 +44,34 @@ def shutdown_event():
     stop_all_servers()
 
 
+def remove_stopped_containers():
+    for container in list(containers.values()):
+        try:
+            container.reload()
+        except:
+            logger.debug(f"Removing {container.id} because it stopped")
+            containers.pop(container.id)
+
+
 def check_images_pulled():
-    client = docker.from_env()
     logger.info(f"Checking if '{IMAGE_NAME}' image exists")
     try:
-        client.images.get(IMAGE_NAME)
+        docker_client.images.get(IMAGE_NAME)
     except docker.errors.ImageNotFound:
         logger.warn(f"Unable to find image for '{IMAGE_NAME}', pulling latest...")
-        client.images.pull(IMAGE_NAME)
+        docker_client.images.pull(IMAGE_NAME)
         logger.info(f"Finished pulling")
     else:
         logger.info(f"Image already pulled")
 
 
 def create_server():
-    client = docker.from_env()
     check_images_pulled()
     for attempt in range(MAX_CONTAINER_RETRIES):
         try:
             logger.info(f"Running '{IMAGE_NAME}' container (attempt: {attempt})...")
             port = find_free_port()
-            container = client.containers.run(
+            container = docker_client.containers.run(
                 image=IMAGE_NAME,
                 tty=True,
                 ports={
@@ -95,9 +110,8 @@ def stop_all_servers():
 
 def stop_server(container_id):
     logger.info(f"Stopping container {container_id}...")
-    client = docker.from_env()
     try:
-        container = client.containers.get(container_id)
+        container = docker_client.containers.get(container_id)
     except docker.errors.NotFound as exc:
         logger.warn(f"Failed to stop server: {exc.explanation}")
     else:

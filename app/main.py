@@ -27,6 +27,7 @@ async def request_game():
 @app.on_event("startup")
 def startup_event():
     logger.info("Starting game manager...")
+    check_images_pulled()
 
 
 @app.on_event("shutdown")
@@ -34,15 +35,24 @@ def shutdown_event():
     stop_all_servers()
 
 
-def create_server():
-    port = find_free_port()
+def check_images_pulled():
     client = docker.from_env()
+    logger.info(f"Checking if '{IMAGE_NAME}' image exists")
     try:
         client.images.get(IMAGE_NAME)
     except docker.errors.ImageNotFound:
-        logger.warn(f"Unable to find image for '{IMAGE_NAME}', pulling latest")
+        logger.warn(f"Unable to find image for '{IMAGE_NAME}', pulling latest...")
         client.images.pull(IMAGE_NAME)
+        logger.info(f"Finished pulling")
+    else:
+        logger.info(f"Image already pulled")
+
+
+def create_server():
+    client = docker.from_env()
+    check_images_pulled()
     logger.info(f"Creating '{IMAGE_NAME}' container...")
+    port = find_free_port()
     container = client.containers.create(
         image=IMAGE_NAME,
         tty=True,

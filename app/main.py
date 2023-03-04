@@ -69,7 +69,7 @@ def create_server():
     check_images_pulled()
     for attempt in range(MAX_CONTAINER_RETRIES):
         try:
-            logger.info(f"Running '{IMAGE_NAME}' container (attempt: {attempt})...")
+            logger.info(f"Running '{IMAGE_NAME}' container (attempts: {attempt})...")
             port = find_free_port()
             container = docker_client.containers.run(
                 image=IMAGE_NAME,

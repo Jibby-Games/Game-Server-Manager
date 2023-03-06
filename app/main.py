@@ -3,6 +3,7 @@ import logging
 from socket import socket
 from fastapi import FastAPI, HTTPException, status
 from app.config import log
+from pydantic import BaseModel
 
 IMAGE_NAME = "jibby/flappyrace"
 MAX_CONTAINER_RETRIES = 10
@@ -21,15 +22,19 @@ async def read_root():
     return {"Hello": "World"}
 
 
-@app.get("/api/request", status_code=status.HTTP_201_CREATED)
-async def request_game():
+class GameRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/request", status_code=status.HTTP_201_CREATED)
+async def request_game(game_request: GameRequest):
     remove_stopped_containers()
     if len(containers) >= MAX_RUNNING_SERVERS:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Max amount of official servers reached! Try joining a public one.",
         )
-    port = create_server()
+    port = create_server(game_request)
     return {"port": port}
 
 
@@ -65,7 +70,7 @@ def check_images_pulled():
         logger.info(f"Image already pulled")
 
 
-def create_server():
+def create_server(game_request):
     check_images_pulled()
     for attempt in range(MAX_CONTAINER_RETRIES):
         try:
@@ -73,13 +78,14 @@ def create_server():
             port = find_free_port()
             container = docker_client.containers.run(
                 image=IMAGE_NAME,
+                # IMPORTANT: make sure everything is converted to a string or you get weird json errors
+                command=["--name", game_request.name, "--port", str(port)],
                 tty=True,
                 ports={
                     f"{port}/udp": ("0.0.0.0", port),
                     f"{port}/tcp": ("0.0.0.0", port),
                 },
                 detach=True,
-                environment=[f"FLAPPY_PORT={port}"],
             )
         except Exception as err:
             logger.warning(f"Failed to start container will try again. Reason: {err}")

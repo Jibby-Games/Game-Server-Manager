@@ -87,18 +87,20 @@ def create_server(game_request):
                 },
                 detach=True,
             )
-        except Exception as err:
+        except docker.errors.APIError as err:
             logger.warning(f"Failed to start container will try again. Reason: {err}")
+        except docker.errors.ImageNotFound as err:
+            logger.warning(f"Image was removed, will try pulling again: {err}")
+            check_images_pulled()
         else:
             # Container running successfully, save it for later
             logger.info(f"Server container {container.id} started")
             containers[container.id] = container
-            break
+            return port
     else:
-        logger.error(
+        raise Exception(
             f"Failed to create container after {MAX_CONTAINER_RETRIES} attempts - stopping."
         )
-    return port
 
 
 def find_free_port():

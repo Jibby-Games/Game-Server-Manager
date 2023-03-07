@@ -24,6 +24,7 @@ async def read_root():
 
 class GameRequest(BaseModel):
     name: str
+    list: bool
 
 
 @app.post("/api/request", status_code=status.HTTP_201_CREATED)
@@ -76,10 +77,13 @@ def create_server(game_request):
         try:
             logger.info(f"Running '{IMAGE_NAME}' container (attempts: {attempt})...")
             port = find_free_port()
+            # IMPORTANT: make sure everything is converted to a string or you get weird json errors
+            args = ["--name", game_request.name, "--port", str(port)]
+            if game_request.list:
+                args.append("--list")
             container = docker_client.containers.run(
                 image=IMAGE_NAME,
-                # IMPORTANT: make sure everything is converted to a string or you get weird json errors
-                command=["--name", game_request.name, "--port", str(port)],
+                command=args,
                 tty=True,
                 ports={
                     f"{port}/udp": ("0.0.0.0", port),

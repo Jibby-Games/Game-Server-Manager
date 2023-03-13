@@ -46,7 +46,7 @@ async def request_game(game_request: GameRequest):
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unable to parse version! Supported versions: {', '.join(str(v) for v in latest_tags)}",
+            detail=f"Request didn't contain a valid version! Supported versions: {', '.join(str(v) for v in latest_tags)}",
         )
     remove_stopped_containers()
     if len(containers) >= MAX_RUNNING_SERVERS:
@@ -57,12 +57,12 @@ async def request_game(game_request: GameRequest):
     if version < min_supported_tag:
         raise HTTPException(
             status_code=status.HTTP_426_UPGRADE_REQUIRED,
-            detail=f"Requested version is out of date! Supported versions: {', '.join(str(v) for v in latest_tags)}",
+            detail=f"Your game version is out of date! Supported versions: {', '.join(str(v) for v in latest_tags)}",
         )
     if version not in latest_tags:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported version requested! Supported versions: {', '.join(str(v) for v in latest_tags)}",
+            detail=f"Unsupported game version! Supported versions: {', '.join(str(v) for v in latest_tags)}",
         )
     port: int = create_server(game_request)
     return {"port": port}

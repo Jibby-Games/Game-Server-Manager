@@ -2,12 +2,20 @@ import docker
 import logging
 from socket import socket
 from fastapi import FastAPI, HTTPException, status
+import requests
 from app.config import log
 from pydantic import BaseModel
+import semantic_version as semver
 
-IMAGE_NAME = "jibby/flappyrace"
+
+DOCKER_USER = "jibby"
+DOCKER_REPO = "flappyrace"
+DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"
+IMAGE_NAME = f"{DOCKER_USER}/{DOCKER_REPO}"
 MAX_CONTAINER_RETRIES = 10
 MAX_RUNNING_SERVERS = 20
+MAX_TAGS = 5
+
 
 log.init_loggers(__name__)
 logger = logging.getLogger(__name__)
@@ -15,6 +23,8 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 docker_client = docker.from_env()
 containers = {}
+latest_tags = []
+min_supported_tag: semver.Version = None
 
 
 @app.get("/")
@@ -25,29 +35,74 @@ async def read_root():
 class GameRequest(BaseModel):
     name: str
     list: bool
+    version: str
 
 
 @app.post("/api/request", status_code=status.HTTP_201_CREATED)
 async def request_game(game_request: GameRequest):
+    version: semver.Version
+    try:
+        version = semver.Version(game_request.version)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unable to parse version! Supported versions: {', '.join(str(v) for v in latest_tags)}",
+        )
     remove_stopped_containers()
     if len(containers) >= MAX_RUNNING_SERVERS:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Max amount of official servers reached! Try joining a public one.",
         )
-    port = create_server(game_request)
+    if version < min_supported_tag:
+        raise HTTPException(
+            status_code=status.HTTP_426_UPGRADE_REQUIRED,
+            detail=f"Requested version is out of date! Supported versions: {', '.join(str(v) for v in latest_tags)}",
+        )
+    if version not in latest_tags:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported version requested! Supported versions: {', '.join(str(v) for v in latest_tags)}",
+        )
+    port: int = create_server(game_request)
     return {"port": port}
 
 
 @app.on_event("startup")
 def startup_event():
     logger.info("Starting game manager...")
-    check_images_pulled()
+    global latest_tags, min_supported_tag
+    latest_tags, min_supported_tag = get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
+    logger.info(
+        f"Supported tags: {', '.join(str(v) for v in latest_tags)}, minimum supported version: {min_supported_tag}"
+    )
+    check_images_pulled(IMAGE_NAME, latest_tags)
 
 
 @app.on_event("shutdown")
 def shutdown_event():
     stop_all_servers()
+
+
+def get_latest_image_tags(user: str, repo: str):
+    params = {"page_size": MAX_TAGS}
+    req = requests.get(url=DOCKER_HUB_URL.format(user=user, repo=repo), params=params)
+    if req.status_code != 200:
+        logger.error("Failed to get latest image tags!")
+        return
+    data = req.json()
+    tags = []
+    min_tag = None
+    for tag in data["results"]:
+        try:
+            version: semver.Version = semver.Version(tag["name"])
+        except ValueError:
+            continue
+        else:
+            if min_tag == None or min_tag > version:
+                min_tag = version
+            tags.append(version)
+    return (tags, min_tag)
 
 
 def remove_stopped_containers():
@@ -59,20 +114,21 @@ def remove_stopped_containers():
             containers.pop(container.id)
 
 
-def check_images_pulled():
-    logger.info(f"Checking if '{IMAGE_NAME}' image exists")
-    try:
-        docker_client.images.get(IMAGE_NAME)
-    except docker.errors.ImageNotFound:
-        logger.warn(f"Unable to find image for '{IMAGE_NAME}', pulling latest...")
-        docker_client.images.pull(IMAGE_NAME)
-        logger.info(f"Finished pulling")
-    else:
-        logger.info(f"Image already pulled")
+def check_images_pulled(image: str, tags: list):
+    for tag in tags:
+        logger.info(f"Checking if '{image}:{tag}' image tag pulled...")
+        try:
+            docker_client.images.get(image)
+        except docker.errors.ImageNotFound:
+            logger.warn(f"Unable to find image for '{image}:{tag}', pulling latest...")
+            docker_client.images.pull(repository=image, tag=tag)
+            logger.info(f"Finished pulling")
+        else:
+            logger.info(f"Image tag already pulled")
 
 
-def create_server(game_request):
-    check_images_pulled()
+def create_server(game_request: GameRequest) -> int:
+    check_images_pulled(IMAGE_NAME, latest_tags)
     for attempt in range(MAX_CONTAINER_RETRIES):
         try:
             logger.info(f"Running '{IMAGE_NAME}' container (attempts: {attempt})...")
@@ -95,7 +151,7 @@ def create_server(game_request):
             logger.warning(f"Failed to start container will try again. Reason: {err}")
         except docker.errors.ImageNotFound as err:
             logger.warning(f"Image was removed, will try pulling again: {err}")
-            check_images_pulled()
+            check_images_pulled(IMAGE_NAME, latest_tags)
         else:
             # Container running successfully, save it for later
             logger.info(f"Server container {container.id} started")
@@ -107,7 +163,7 @@ def create_server(game_request):
         )
 
 
-def find_free_port():
+def find_free_port() -> int:
     with socket() as s:
         s.bind(("", 0))
         _, port = s.getsockname()
@@ -120,7 +176,7 @@ def stop_all_servers():
         stop_server(container.id)
 
 
-def stop_server(container_id):
+def stop_server(container_id: str):
     logger.info(f"Stopping container {container_id}...")
     try:
         container = docker_client.containers.get(container_id)

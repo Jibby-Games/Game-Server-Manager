@@ -38,7 +38,7 @@ class GameRequest(BaseModel):
     version: str
 
 
-@app.post("/api/request", status_code=status.HTTP_201_CREATED)
+@app.post("/api/manager/request", status_code=status.HTTP_201_CREATED)
 async def request_game(game_request: GameRequest):
     version: semver.Version
     try:

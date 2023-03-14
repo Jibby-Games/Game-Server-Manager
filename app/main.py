@@ -60,10 +60,13 @@ async def request_game(game_request: GameRequest):
             detail=f"Your game version is out of date! Supported versions: {', '.join(str(v) for v in latest_tags)}",
         )
     if version not in latest_tags:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unsupported game version! Supported versions: {', '.join(str(v) for v in latest_tags)}",
-        )
+        # Try to see if there are new tags available
+        get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
+        if version not in latest_tags:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported game version! Supported versions: {', '.join(str(v) for v in latest_tags)}",
+            )
     port: int = create_server(game_request)
     return {"port": port}
 
@@ -71,8 +74,7 @@ async def request_game(game_request: GameRequest):
 @app.on_event("startup")
 def startup_event():
     logger.info("Starting game manager...")
-    global latest_tags, min_supported_tag
-    latest_tags, min_supported_tag = get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
+    get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
     logger.info(
         f"Supported tags: {', '.join(str(v) for v in latest_tags)}, minimum supported version: {min_supported_tag}"
     )
@@ -102,7 +104,9 @@ def get_latest_image_tags(user: str, repo: str):
             if min_tag == None or min_tag > version:
                 min_tag = version
             tags.append(version)
-    return (tags, min_tag)
+    global latest_tags, min_supported_tag
+    latest_tags = tags
+    min_supported_tag = min_tag
 
 
 def remove_stopped_containers():
@@ -116,15 +120,9 @@ def remove_stopped_containers():
 
 def check_images_pulled(image: str, tags: list):
     for tag in tags:
-        logger.info(f"Checking if '{image}:{tag}' image tag pulled...")
-        try:
-            docker_client.images.get(image)
-        except docker.errors.ImageNotFound:
-            logger.warn(f"Unable to find image for '{image}:{tag}', pulling latest...")
-            docker_client.images.pull(repository=image, tag=tag)
-            logger.info(f"Finished pulling")
-        else:
-            logger.info(f"Image tag already pulled")
+        logger.info(f"Pulling '{image}:{tag}' image tag...")
+        docker_client.images.pull(repository=image, tag=str(tag))
+        logger.info(f"Finished pulling")
 
 
 def create_server(game_request: GameRequest) -> int:
@@ -138,7 +136,7 @@ def create_server(game_request: GameRequest) -> int:
             if game_request.list:
                 args.append("--list")
             container = docker_client.containers.run(
-                image=IMAGE_NAME,
+                image=f"{IMAGE_NAME}:{game_request.version}",
                 command=args,
                 tty=True,
                 ports={

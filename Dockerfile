@@ -11,4 +11,4 @@ RUN pip install -r requirements.txt
 
 # Run the application:
 COPY . .
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0"]
+ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0"]

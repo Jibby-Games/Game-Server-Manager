@@ -75,9 +75,6 @@ async def request_game(game_request: GameRequest):
 def startup_event():
     logger.info("Starting game manager...")
     get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
-    logger.info(
-        f"Supported tags: {', '.join(str(v) for v in latest_tags)}, minimum supported version: {min_supported_tag}"
-    )
     check_images_pulled(IMAGE_NAME, latest_tags)
 
 
@@ -107,6 +104,9 @@ def get_latest_image_tags(user: str, repo: str):
     global latest_tags, min_supported_tag
     latest_tags = tags
     min_supported_tag = min_tag
+    logger.info(
+        f"Got latest tags. New supported tags: {', '.join(str(v) for v in latest_tags)}, minimum supported version: {min_supported_tag}"
+    )
 
 
 def remove_stopped_containers():

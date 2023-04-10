@@ -32,6 +32,13 @@ async def read_root():
     return {"Hello": "World"}
 
 
+# This is needed to pass the CORS preflight checks from HTML5 builds so they can
+# request games to be created
+@app.options("/api/manager/request")
+async def request_game_preflight():
+    return
+
+
 class GameRequest(BaseModel):
     name: str
     list: bool

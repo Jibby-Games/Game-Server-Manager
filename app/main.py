@@ -12,6 +12,7 @@ DOCKER_USER = "jibby"
 DOCKER_REPO = "flappyrace"
 DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"
 IMAGE_NAME = f"{DOCKER_USER}/{DOCKER_REPO}"
+SECRETS_VOLUME = "flappy-backend_nginx_secrets"
 MAX_CONTAINER_RETRIES = 10
 MAX_RUNNING_SERVERS = 20
 MAX_TAGS = 5
@@ -150,6 +151,7 @@ def create_server(game_request: GameRequest) -> int:
                     f"{port}/udp": ("0.0.0.0", port),
                     f"{port}/tcp": ("0.0.0.0", port),
                 },
+                volumes=[f"{SECRETS_VOLUME}:/secrets:ro"],
                 detach=True,
             )
         except docker.errors.APIError as err:

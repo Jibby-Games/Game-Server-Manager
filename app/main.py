@@ -48,6 +48,7 @@ class GameRequest(BaseModel):
 
 @app.post("/api/manager/request", status_code=status.HTTP_201_CREATED)
 async def request_game(game_request: GameRequest):
+    logger.debug("Received request: %s", game_request)
     version: semver.Version
     try:
         version = semver.Version(game_request.version)
@@ -118,11 +119,16 @@ def get_latest_image_tags(user: str, repo: str):
 
 
 def remove_stopped_containers():
+    logger.debug("Checking and removing stopped containers...")
     for container in list(containers.values()):
         try:
             container.reload()
+            logger.debug(f"Container {container.id} status: %s", container.status)
+            if container.status != "running":
+                logger.info(f"Removing {container.id} because it stopped")
+                containers.pop(container.id)
         except:
-            logger.debug(f"Removing {container.id} because it stopped")
+            logger.info(f"Removing {container.id} because it was deleted")
             containers.pop(container.id)
 
 

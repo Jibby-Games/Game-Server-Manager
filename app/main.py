@@ -33,7 +33,7 @@ async def read_root():
     return {"Hello": "World"}
 
 
-@app.get("/api/manager/")
+@app.get("/api/manager")
 async def hello_world():
     return "Hello world"
 

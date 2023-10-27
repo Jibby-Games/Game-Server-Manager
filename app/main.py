@@ -33,6 +33,11 @@ async def read_root():
     return {"Hello": "World"}
 
 
+@app.get("/api/manager/")
+async def hello_world():
+    return "Hello world"
+
+
 # This is needed to pass the CORS preflight checks from HTML5 builds so they can
 # request games to be created
 @app.options("/api/manager/request")

@@ -5,6 +5,9 @@ RUN apk update && \
     apk add curl && \
     rm -rf /var/cache/apk/*
 
+HEALTHCHECK --interval=1m --timeout=10s --retries=3 --start-period=1m \
+    CMD curl --fail localhost:8000/api/manager || exit 1
+
 # Set up the venv
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv $VIRTUAL_ENV

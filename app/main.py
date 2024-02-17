@@ -5,10 +5,9 @@ from socket import socket
 import docker
 import requests
 import semantic_version as semver
+from app.config import log
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
-
-from app.config import log
 
 DOCKER_USER = "jibby"
 DOCKER_REPO = "flappyrace"
@@ -43,11 +42,8 @@ min_supported_tag: semver.Version = None
 
 
 @app.get("/")
-async def read_root():
-    return {"Hello": "World"}
-
-
 @app.get("/api/manager")
+@app.get("/api/manager/healthcheck")
 async def hello_world():
     return "Hello world"
 

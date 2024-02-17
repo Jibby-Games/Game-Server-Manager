@@ -6,7 +6,7 @@ RUN apk update && \
     rm -rf /var/cache/apk/*
 
 HEALTHCHECK --interval=1m --timeout=10s --retries=3 --start-period=1m \
-    CMD curl --fail localhost:8000/api/manager || exit 1
+    CMD curl --fail localhost:8000/api/manager/healthcheck || exit 1
 
 # Set up the venv
 ENV VIRTUAL_ENV=/opt/venv

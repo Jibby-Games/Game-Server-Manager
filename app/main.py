@@ -181,7 +181,7 @@ def create_server(game_request: GameRequest) -> int:
 
 def find_free_port() -> int:
     with socket() as s:
-        s.bind(("", 0))
+        s.bind(("127.0.0.1", 0))
         _, port = s.getsockname()
     return port
 

@@ -1,12 +1,14 @@
-import docker
 import logging
+from contextlib import asynccontextmanager
 from socket import socket
-from fastapi import FastAPI, HTTPException, status
-import requests
-from app.config import log
-from pydantic import BaseModel
-import semantic_version as semver
 
+import docker
+import requests
+import semantic_version as semver
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel
+
+from app.config import log
 
 DOCKER_USER = "jibby"
 DOCKER_REPO = "flappyrace"
@@ -21,7 +23,19 @@ MAX_TAGS = 5
 log.init_loggers(__name__)
 logger = logging.getLogger(__name__)
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting game manager...")
+    get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
+    check_images_pulled(IMAGE_NAME, latest_tags)
+    yield
+    # Shutdown
+    stop_all_servers()
+
+
+app = FastAPI(lifespan=lifespan)
 docker_client = docker.from_env()
 containers = {}
 latest_tags = []
@@ -83,18 +97,6 @@ async def request_game(game_request: GameRequest):
             )
     port: int = create_server(game_request)
     return {"port": port}
-
-
-@app.on_event("startup")
-def startup_event():
-    logger.info("Starting game manager...")
-    get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
-    check_images_pulled(IMAGE_NAME, latest_tags)
-
-
-@app.on_event("shutdown")
-def shutdown_event():
-    stop_all_servers()
 
 
 def get_latest_image_tags(user: str, repo: str):

@@ -1,13 +1,15 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
 from socket import socket
 
 import docker
 import requests
 import semantic_version as semver
-from app.config import log
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
+
+from app.config import log
 
 DOCKER_USER = "jibby"
 DOCKER_REPO = "flappyrace"
@@ -35,7 +37,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-docker_client = docker.from_env()
+try:
+    docker_client = docker.from_env()
+except docker.errors.DockerException:
+    logger.critical("Docker service is not running! Cannot run manager!")
+    sys.exit(1)
 containers = {}
 latest_tags = []
 min_supported_tag: semver.Version = None

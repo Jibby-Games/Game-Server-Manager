@@ -14,12 +14,12 @@ from pydantic import BaseModel
 
 # Load user app settings from .env file or env vars
 load_dotenv()
-DOCKER_USER = os.getenv("DOCKER_USER")
-DOCKER_REPO = os.getenv("DOCKER_REPO")
-SECRETS_VOLUME = os.getenv("SECRETS_VOLUME")
-MAX_CONTAINER_RETRIES = os.getenv("MAX_CONTAINER_RETRIES")
-MAX_RUNNING_SERVERS = os.getenv("MAX_RUNNING_SERVERS")
-MAX_TAGS = os.getenv("MAX_TAGS")
+DOCKER_USER: str = os.getenv("DOCKER_USER")
+DOCKER_REPO: str = os.getenv("DOCKER_REPO")
+SECRETS_VOLUME: str = os.getenv("SECRETS_VOLUME")
+MAX_CONTAINER_RETRIES: int = int(os.getenv("MAX_CONTAINER_RETRIES"))
+MAX_RUNNING_SERVERS: int = int(os.getenv("MAX_RUNNING_SERVERS"))
+MAX_TAGS: int = int(os.getenv("MAX_TAGS"))
 
 # Constants
 DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"

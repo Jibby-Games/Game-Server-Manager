@@ -8,6 +8,7 @@ docker = "*"
 fastapi = "*"
 semantic-version = "*"
 uvicorn = "*"
+python-dotenv = "*"
 
 [dev-packages]
 

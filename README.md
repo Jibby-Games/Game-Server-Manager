@@ -21,6 +21,10 @@ The following must be installed and setup to use this repo correctly:
 - Docker - For running and managing game servers
 - pipenv - For managing Python packages
 
+# Development
+Run the `./start_server.sh` script to create a pipenv with the right python version and
+run the app. This will auto reload any changes to the app to make testing easier.
+
 # Updating Dependencies
 Run the `./update_deps.sh` script to update everthing using `pipenv` and generate a new `requirements.txt`
 Make sure everything still works and then commit these files if they were updated:

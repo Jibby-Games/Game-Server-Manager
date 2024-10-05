@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from socket import socket
@@ -6,29 +7,45 @@ from socket import socket
 import docker
 import requests
 import semantic_version as semver
+from app.config import log
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 
-from app.config import log
+# Load user app settings from .env file or env vars
+load_dotenv()
+DOCKER_USER = os.getenv("DOCKER_USER")
+DOCKER_REPO = os.getenv("DOCKER_REPO")
+SECRETS_VOLUME = os.getenv("SECRETS_VOLUME")
+MAX_CONTAINER_RETRIES = os.getenv("MAX_CONTAINER_RETRIES")
+MAX_RUNNING_SERVERS = os.getenv("MAX_RUNNING_SERVERS")
+MAX_TAGS = os.getenv("MAX_TAGS")
 
-DOCKER_USER = "jibby"
-DOCKER_REPO = "flappyrace"
+# Constants
 DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"
 IMAGE_NAME = f"{DOCKER_USER}/{DOCKER_REPO}"
-SECRETS_VOLUME = "flappy-backend_nginx_secrets"
-MAX_CONTAINER_RETRIES = 10
-MAX_RUNNING_SERVERS = 20
-MAX_TAGS = 5
 
-
+# Load logger
 log.init_loggers(__name__)
 logger = logging.getLogger(__name__)
+
+
+def get_settings():
+    msg = f"""Settings:
+DOCKER_USER: {DOCKER_USER}
+DOCKER_REPO: {DOCKER_REPO}
+SECRETS_VOLUME: {SECRETS_VOLUME}
+MAX_CONTAINER_RETRIES: {MAX_CONTAINER_RETRIES}
+MAX_RUNNING_SERVERS: {MAX_RUNNING_SERVERS}
+MAX_TAGS: {MAX_TAGS}"""
+    return msg
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting game manager...")
+    logger.info(get_settings())
     get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
     check_images_pulled(IMAGE_NAME, latest_tags)
     yield

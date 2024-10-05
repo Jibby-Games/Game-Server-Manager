@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_settings():
-    msg = f"""Settings:
+    msg = f"""Loaded settings:
 DOCKER_USER: {DOCKER_USER}
 DOCKER_REPO: {DOCKER_REPO}
 SECRETS_VOLUME: {SECRETS_VOLUME}

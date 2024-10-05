@@ -120,7 +120,9 @@ async def request_game(game_request: GameRequest):
 
 def get_latest_image_tags(user: str, repo: str):
     params = {"page_size": MAX_TAGS}
-    req = requests.get(url=DOCKER_HUB_URL.format(user=user, repo=repo), params=params)
+    req = requests.get(
+        url=DOCKER_HUB_URL.format(user=user, repo=repo), params=params, timeout=30
+    )
     if req.status_code != 200:
         logger.error("Failed to get latest image tags!")
         return
@@ -220,6 +222,6 @@ def stop_server(container_id: str):
     try:
         container = docker_client.containers.get(container_id)
     except docker.errors.NotFound as exc:
-        logger.warn(f"Failed to stop server: {exc.explanation}")
+        logger.warning(f"Failed to stop server: {exc.explanation}")
     else:
         container.stop()

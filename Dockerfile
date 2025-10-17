@@ -1,8 +1,8 @@
 FROM python:3.12-alpine3.19
 
-# Install curl for healthcheck and build dependencies
+# Install curl for healthcheck
 RUN apk update && \
-    apk add curl gcc musl-dev libffi-dev && \
+    apk add curl && \
     rm -rf /var/cache/apk/*
 
 HEALTHCHECK --interval=1m --timeout=10s --retries=3 --start-period=1m \
@@ -18,7 +18,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 # Install dependencies:
 COPY requirements.txt .
-RUN uv pip install --no-cache -r requirements.txt
+RUN uv pip sync --no-cache requirements.txt
 
 # Run the application:
 COPY . .

@@ -1,0 +1,12 @@
+[project]
+name = "game-server-manager"
+version = "0.1.0"
+description = "A game server manager which uses Docker to run and manage each server instance"
+requires-python = ">=3.12"
+dependencies = [
+    "docker",
+    "fastapi",
+    "semantic-version",
+    "uvicorn[standard]",
+    "python-dotenv",
+]

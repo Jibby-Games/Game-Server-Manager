@@ -1,2 +1,2 @@
 #!/bin/sh
-pipenv update && pipenv upgrade && pipenv requirements > requirements.txt
+uv lock --upgrade && uv pip compile pyproject.toml -o requirements.txt

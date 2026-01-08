@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting game manager...")
     logger.info(get_settings())
+    check_secrets_volume()
     get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
     check_images_pulled(IMAGE_NAME, latest_tags)
     yield
@@ -161,6 +162,21 @@ def remove_stopped_containers():
         except:
             logger.info(f"Removing {container.id} because it was deleted")
             containers.pop(container.id)
+
+
+def check_secrets_volume():
+    """Verify that the secrets volume exists and is accessible."""
+    logger.info(f"Checking secrets volume '{SECRETS_VOLUME}'...")
+    try:
+        volume = docker_client.volumes.get(SECRETS_VOLUME)
+        logger.info(f"Secrets volume found: {volume.name}")
+    except docker.errors.NotFound:
+        logger.critical(f"Secrets volume '{SECRETS_VOLUME}' does not exist!")
+        logger.critical("Please create the volume or check your SECRETS_VOLUME configuration.")
+        sys.exit(1)
+    except docker.errors.APIError as err:
+        logger.critical(f"Failed to access secrets volume: {err}")
+        sys.exit(1)
 
 
 def check_images_pulled(image: str, tags: list):

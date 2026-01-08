@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from contextlib import asynccontextmanager
-from socket import socket
+from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
 
 import docker
 import requests
@@ -67,6 +67,15 @@ containers = {}
 latest_tags = []
 min_supported_tag: semver.Version = None
 
+next_port = GAME_SERVER_PORT_MIN
+
+def get_next_port() -> int:
+    global next_port
+    port = next_port
+    next_port += 1
+    if next_port > GAME_SERVER_PORT_MAX:
+        next_port = GAME_SERVER_PORT_MIN
+    return port
 
 @app.get("/")
 @app.get("/api/manager")
@@ -218,22 +227,53 @@ def create_server(game_request: GameRequest) -> int:
             containers[container.id] = container
             return port
     else:
-        raise Exception(
-            f"Failed to create container after {MAX_CONTAINER_RETRIES} attempts - stopping."
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create game server after {MAX_CONTAINER_RETRIES} attempts. Please try again later.",
         )
+
+
+def get_docker_used_ports() -> set:
+    used_ports = set()
+    try:
+        # Check all containers to be safe (running and non-running)
+        for container in docker_client.containers.list(all=True):
+            ports = container.attrs.get("NetworkSettings", {}).get("Ports")
+            if ports:
+                for mappings in ports.values():
+                    if mappings:
+                        for mapping in mappings:
+                            host_port = mapping.get("HostPort")
+                            if host_port:
+                                used_ports.add(int(host_port))
+    except Exception as e:
+        logger.warning(f"Failed to fetch used ports from Docker: {e}")
+    return used_ports
 
 
 def find_free_port() -> int:
     """Find a free port within the configured range."""
-    for port in range(GAME_SERVER_PORT_MIN, GAME_SERVER_PORT_MAX + 1):
+    used_ports = get_docker_used_ports()
+    logger.debug(f"Ports currently in use by Docker: {used_ports}")
+
+    for attempts in range(0, GAME_SERVER_PORT_MAX + 1 - GAME_SERVER_PORT_MIN):
+        port = get_next_port()
+        if port in used_ports:
+            continue
+
         try:
-            with socket() as s:
-                s.bind(("127.0.0.1", port))
-                return port
+            with socket(AF_INET, SOCK_STREAM) as s_tcp:
+                s_tcp.bind(("0.0.0.0", port))
+            with socket(AF_INET, SOCK_DGRAM) as s_udp:
+                s_udp.bind(("0.0.0.0", port))
+            return port
         except OSError:
             # Port is already in use, try next one
             continue
-    raise Exception(f"No free ports available in range {GAME_SERVER_PORT_MIN}-{GAME_SERVER_PORT_MAX}")
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=f"No free ports available. Please try again later.",
+    )
 
 
 def stop_all_servers():

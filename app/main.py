@@ -20,6 +20,8 @@ SECRETS_VOLUME: str = os.getenv("SECRETS_VOLUME")
 MAX_CONTAINER_RETRIES: int = int(os.getenv("MAX_CONTAINER_RETRIES"))
 MAX_RUNNING_SERVERS: int = int(os.getenv("MAX_RUNNING_SERVERS"))
 MAX_TAGS: int = int(os.getenv("MAX_TAGS"))
+GAME_SERVER_PORT_MIN: int = int(os.getenv("GAME_SERVER_PORT_MIN", "7000"))
+GAME_SERVER_PORT_MAX: int = int(os.getenv("GAME_SERVER_PORT_MAX", "7999"))
 
 # Constants
 DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"
@@ -37,7 +39,8 @@ DOCKER_REPO: {DOCKER_REPO}
 SECRETS_VOLUME: {SECRETS_VOLUME}
 MAX_CONTAINER_RETRIES: {MAX_CONTAINER_RETRIES}
 MAX_RUNNING_SERVERS: {MAX_RUNNING_SERVERS}
-MAX_TAGS: {MAX_TAGS}"""
+MAX_TAGS: {MAX_TAGS}
+GAME_SERVER_PORT_RANGE: {GAME_SERVER_PORT_MIN}-{GAME_SERVER_PORT_MAX}"""
     return msg
 
 
@@ -205,10 +208,16 @@ def create_server(game_request: GameRequest) -> int:
 
 
 def find_free_port() -> int:
-    with socket() as s:
-        s.bind(("127.0.0.1", 0))
-        _, port = s.getsockname()
-    return port
+    """Find a free port within the configured range."""
+    for port in range(GAME_SERVER_PORT_MIN, GAME_SERVER_PORT_MAX + 1):
+        try:
+            with socket() as s:
+                s.bind(("0.0.0.0", port))
+                return port
+        except OSError:
+            # Port is already in use, try next one
+            continue
+    raise Exception(f"No free ports available in range {GAME_SERVER_PORT_MIN}-{GAME_SERVER_PORT_MAX}")
 
 
 def stop_all_servers():

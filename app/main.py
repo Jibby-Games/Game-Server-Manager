@@ -228,7 +228,7 @@ def find_free_port() -> int:
     for port in range(GAME_SERVER_PORT_MIN, GAME_SERVER_PORT_MAX + 1):
         try:
             with socket() as s:
-                s.bind(("0.0.0.0", port))
+                s.bind(("127.0.0.1", port))
                 return port
         except OSError:
             # Port is already in use, try next one

@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import asyncio
 from contextlib import asynccontextmanager
 from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
 
@@ -127,7 +128,7 @@ async def request_game(game_request: GameRequest):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unsupported game version! Supported versions: {', '.join(str(v) for v in latest_tags)}",
             )
-    port: int = create_server(game_request)
+    port: int = await create_server(game_request)
     return {"port": port}
 
 
@@ -195,7 +196,7 @@ def check_images_pulled(image: str, tags: list):
         logger.info(f"Finished pulling")
 
 
-def create_server(game_request: GameRequest) -> int:
+async def create_server(game_request: GameRequest) -> int:
     check_images_pulled(IMAGE_NAME, latest_tags)
     for attempt in range(MAX_CONTAINER_RETRIES):
         try:
@@ -222,10 +223,31 @@ def create_server(game_request: GameRequest) -> int:
             logger.warning(f"Image was removed, will try pulling again: {err}")
             check_images_pulled(IMAGE_NAME, latest_tags)
         else:
-            # Container running successfully, save it for later
-            logger.info(f"Server container {container.id} started")
-            containers[container.id] = container
-            return port
+            # Wait for container to be running
+            logger.info(f"Waiting for container {container.id} to start...")
+            for _ in range(30):
+                container.reload()
+                if container.status == "running":
+                    health = container.attrs.get("State", {}).get("Health", {}).get("Status")
+                    if health == "healthy" or health is None:
+                        # Container running successfully, save it for later
+                        logger.info(f"Server container {container.id} started and ready")
+                        containers[container.id] = container
+                        return port
+                    elif health == "unhealthy":
+                        logger.error(f"Server container {container.id} is unhealthy")
+                        break
+                elif container.status == "exited":
+                    logger.error(f"Server container {container.id} exited immediately")
+                    break
+                await asyncio.sleep(1)
+
+            # If we reach here, the container failed to start properly in this attempt
+            logger.warning(f"Container {container.id} failed to reach ready state, retrying...")
+            try:
+                container.stop()
+            except:
+                pass
     else:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

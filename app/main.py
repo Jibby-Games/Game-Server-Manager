@@ -3,6 +3,7 @@ import os
 import sys
 import asyncio
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
 
 import docker
@@ -58,7 +59,7 @@ GAME_SERVER_PORT_RANGE: {GAME_SERVER_PORT_MIN}-{GAME_SERVER_PORT_MAX}"""
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    logger.info("Starting game manager...")
+    logger.info("Starting game manager v%s...", version("game-server-manager"))
     logger.info(get_settings())
     check_secrets_volume()
     get_latest_image_tags(DOCKER_USER, DOCKER_REPO)

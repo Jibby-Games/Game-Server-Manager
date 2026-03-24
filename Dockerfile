@@ -28,4 +28,4 @@ COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-ENTRYPOINT ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0"]
+ENTRYPOINT ["uv", "run", "fastapi", "run", "app/main.py", "--host", "0.0.0.0"]

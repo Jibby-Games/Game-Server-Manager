@@ -15,12 +15,22 @@ from pydantic import BaseModel
 
 # Load user app settings from .env file or env vars
 load_dotenv()
-DOCKER_USER: str = os.getenv("DOCKER_USER")
-DOCKER_REPO: str = os.getenv("DOCKER_REPO")
-SECRETS_VOLUME: str = os.getenv("SECRETS_VOLUME")
-MAX_CONTAINER_RETRIES: int = int(os.getenv("MAX_CONTAINER_RETRIES"))
-MAX_RUNNING_SERVERS: int = int(os.getenv("MAX_RUNNING_SERVERS"))
-MAX_TAGS: int = int(os.getenv("MAX_TAGS"))
+
+
+def _require_env(name: str) -> str:
+    value = os.getenv(name)
+    if value is None:
+        print(f"ERROR: Required environment variable '{name}' is not set. Copy .env.example to .env and fill it in.")
+        sys.exit(1)
+    return value
+
+
+DOCKER_USER: str = _require_env("DOCKER_USER")
+DOCKER_REPO: str = _require_env("DOCKER_REPO")
+SECRETS_VOLUME: str = _require_env("SECRETS_VOLUME")
+MAX_CONTAINER_RETRIES: int = int(_require_env("MAX_CONTAINER_RETRIES"))
+MAX_RUNNING_SERVERS: int = int(_require_env("MAX_RUNNING_SERVERS"))
+MAX_TAGS: int = int(_require_env("MAX_TAGS"))
 GAME_SERVER_PORT_MIN: int = int(os.getenv("GAME_SERVER_PORT_MIN", "7000"))
 GAME_SERVER_PORT_MAX: int = int(os.getenv("GAME_SERVER_PORT_MAX", "7999"))
 

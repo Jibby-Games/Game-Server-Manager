@@ -19,15 +19,14 @@ contains other microservices for the game.
 # Requirements
 The following must be installed and setup to use this repo correctly:
 - Docker - For running and managing game servers
-- pipenv - For managing Python packages
+- [uv](https://docs.astral.sh/uv/) - For managing Python packages
 
 # Development
-Run the `./start_server.sh` script to create a pipenv with the right python version and
-run the app. This will auto reload any changes to the app to make testing easier.
+Run the `./start_server.sh` script to start the app using `uv`.
+This will auto reload any changes to the app to make testing easier.
 
 # Updating Dependencies
-Run the `./update_deps.sh` script to update everthing using `pipenv` and generate a new `requirements.txt`
+Run the `./update_deps.sh` script to upgrade and re-lock all dependencies using `uv`.
 Make sure everything still works and then commit these files if they were updated:
-- Pipfile
-- Pipfile.lock
-- requirements.txt (required for the Dockerfile to simplify installation)
+- pyproject.toml
+- uv.lock

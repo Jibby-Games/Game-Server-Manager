@@ -62,6 +62,7 @@ TRAEFIK_NETWORK: str = os.getenv("TRAEFIK_NETWORK", "frontend")
 # Fixed port that game servers listen on internally, Traefik will route to this port on the container
 TRAEFIK_GAME_PORT: int = int(os.getenv("TRAEFIK_GAME_PORT", "31400"))
 GAME_SLUG: str = os.getenv("GAME_SLUG", "flappy-race")
+LOCAL_IMAGES: bool = os.getenv("LOCAL_IMAGES", "false").lower() in ("true", "1", "yes")
 
 # Constants
 DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"
@@ -80,6 +81,7 @@ MAX_CONTAINER_RETRIES: {MAX_CONTAINER_RETRIES}
 MAX_RUNNING_SERVERS: {MAX_RUNNING_SERVERS}
 MAX_TAGS: {MAX_TAGS}
 CONNECTION_MODE: {CONNECTION_MODE}
+LOCAL_IMAGES: {LOCAL_IMAGES}
 SECRETS_VOLUME: {SECRETS_VOLUME}
 GAME_SERVER_PORT_RANGE: {GAME_SERVER_PORT_MIN}-{GAME_SERVER_PORT_MAX}
 TRAEFIK_NETWORK: {TRAEFIK_NETWORK}
@@ -94,8 +96,11 @@ async def lifespan(app: FastAPI):
     logger.info(get_settings())
     if CONNECTION_MODE == ConnectionMode.PORTS:
         check_secrets_volume()
-    get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
-    check_images_pulled(IMAGE_NAME, latest_tags)
+    if LOCAL_IMAGES:
+        get_local_image_tags(IMAGE_NAME)
+    else:
+        get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
+        check_images_pulled(IMAGE_NAME, latest_tags)
     yield
     # Shutdown
     stop_all_servers()
@@ -167,7 +172,10 @@ async def request_game(game_request: GameRequest):
         )
     if version not in latest_tags:
         # Try to see if there are new tags available
-        get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
+        if LOCAL_IMAGES:
+            get_local_image_tags(IMAGE_NAME)
+        else:
+            get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
         if version not in latest_tags:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -236,6 +244,30 @@ def check_secrets_volume():
         sys.exit(1)
 
 
+def get_local_image_tags(image: str):
+    """Populate latest_tags from locally available Docker images."""
+    tags = []
+    min_tag = None
+    for img in docker_client.images.list(name=image):
+        for tag_str in img.tags:
+            # tag_str is like "repo/name:1.2.3"
+            raw = tag_str.split(":", 1)[-1]
+            try:
+                version: semver.Version = semver.Version(raw)
+            except ValueError:
+                continue
+            if min_tag is None or min_tag > version:
+                min_tag = version
+            tags.append(version)
+    tags = sorted(set(tags), reverse=True)[:MAX_TAGS]
+    global latest_tags, min_supported_tag
+    latest_tags = tags
+    min_supported_tag = min_tag
+    logger.info(
+        f"Using local image tags. Supported tags: {', '.join(str(v) for v in latest_tags)}, minimum supported version: {min_supported_tag}"
+    )
+
+
 def check_images_pulled(image: str, tags: list):
     for tag in tags:
         logger.info(f"Pulling '{image}:{tag}' image tag...")
@@ -244,7 +276,8 @@ def check_images_pulled(image: str, tags: list):
 
 
 async def create_server(game_request: GameRequest) -> dict:
-    check_images_pulled(IMAGE_NAME, latest_tags)
+    if not LOCAL_IMAGES:
+        check_images_pulled(IMAGE_NAME, latest_tags)
     for attempt in range(MAX_CONTAINER_RETRIES):
         try:
             logger.info(f"Running '{IMAGE_NAME}' container (attempts: {attempt})...")

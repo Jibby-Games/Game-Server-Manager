@@ -2,7 +2,9 @@ import logging
 import os
 import sys
 import asyncio
+import uuid
 from contextlib import asynccontextmanager
+from enum import Enum
 from importlib.metadata import version
 from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
 
@@ -18,22 +20,48 @@ from pydantic import BaseModel
 load_dotenv()
 
 
+class ConnectionMode(str, Enum):
+    PORTS = "ports"
+    TRAEFIK = "traefik"
+
+
 def _require_env(name: str) -> str:
     value = os.getenv(name)
     if value is None:
-        print(f"ERROR: Required environment variable '{name}' is not set. Copy .env.example to .env and fill it in.")
+        print(
+            f"ERROR: Required environment variable '{name}' is not set. Copy .env.example to .env and fill it in."
+        )
         sys.exit(1)
     return value
 
 
+# Required environment variables
 DOCKER_USER: str = _require_env("DOCKER_USER")
 DOCKER_REPO: str = _require_env("DOCKER_REPO")
-SECRETS_VOLUME: str = _require_env("SECRETS_VOLUME")
 MAX_CONTAINER_RETRIES: int = int(_require_env("MAX_CONTAINER_RETRIES"))
 MAX_RUNNING_SERVERS: int = int(_require_env("MAX_RUNNING_SERVERS"))
 MAX_TAGS: int = int(_require_env("MAX_TAGS"))
+
+try:
+    CONNECTION_MODE: ConnectionMode = ConnectionMode(
+        os.getenv("CONNECTION_MODE", "traefik")
+    )
+except ValueError:
+    print(
+        f"ERROR: Invalid CONNECTION_MODE value '{os.getenv('CONNECTION_MODE')}'. Must be 'ports' or 'traefik'."
+    )
+    sys.exit(1)
+
+# Settings for Ports connection mode
+# HTTPS certs passed to game servers via a volume
+SECRETS_VOLUME: str = os.getenv("SECRETS_VOLUME", "")
 GAME_SERVER_PORT_MIN: int = int(os.getenv("GAME_SERVER_PORT_MIN", "7000"))
 GAME_SERVER_PORT_MAX: int = int(os.getenv("GAME_SERVER_PORT_MAX", "7999"))
+# Settings for Traefik connection mode
+TRAEFIK_NETWORK: str = os.getenv("TRAEFIK_NETWORK", "frontend")
+# Fixed port that game servers listen on internally, Traefik will route to this port on the container
+TRAEFIK_GAME_PORT: int = int(os.getenv("TRAEFIK_GAME_PORT", "31400"))
+GAME_SLUG: str = os.getenv("GAME_SLUG", "flappy-race")
 
 # Constants
 DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"
@@ -48,11 +76,14 @@ def get_settings():
     msg = f"""Loaded settings:
 DOCKER_USER: {DOCKER_USER}
 DOCKER_REPO: {DOCKER_REPO}
-SECRETS_VOLUME: {SECRETS_VOLUME}
 MAX_CONTAINER_RETRIES: {MAX_CONTAINER_RETRIES}
 MAX_RUNNING_SERVERS: {MAX_RUNNING_SERVERS}
 MAX_TAGS: {MAX_TAGS}
-GAME_SERVER_PORT_RANGE: {GAME_SERVER_PORT_MIN}-{GAME_SERVER_PORT_MAX}"""
+CONNECTION_MODE: {CONNECTION_MODE}
+SECRETS_VOLUME: {SECRETS_VOLUME}
+GAME_SERVER_PORT_RANGE: {GAME_SERVER_PORT_MIN}-{GAME_SERVER_PORT_MAX}
+TRAEFIK_NETWORK: {TRAEFIK_NETWORK}
+GAME_SLUG: {GAME_SLUG}"""
     return msg
 
 
@@ -61,7 +92,8 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting game manager v%s...", version("game-server-manager"))
     logger.info(get_settings())
-    check_secrets_volume()
+    if CONNECTION_MODE == ConnectionMode.PORTS:
+        check_secrets_volume()
     get_latest_image_tags(DOCKER_USER, DOCKER_REPO)
     check_images_pulled(IMAGE_NAME, latest_tags)
     yield
@@ -81,6 +113,7 @@ min_supported_tag: semver.Version = None
 
 next_port = GAME_SERVER_PORT_MIN
 
+
 def get_next_port() -> int:
     global next_port
     port = next_port
@@ -88,6 +121,7 @@ def get_next_port() -> int:
     if next_port > GAME_SERVER_PORT_MAX:
         next_port = GAME_SERVER_PORT_MIN
     return port
+
 
 @app.get("/")
 @app.get("/api/manager")
@@ -139,8 +173,8 @@ async def request_game(game_request: GameRequest):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unsupported game version! Supported versions: {', '.join(str(v) for v in latest_tags)}",
             )
-    port: int = await create_server(game_request)
-    return {"port": port}
+    result: dict = await create_server(game_request)
+    return result
 
 
 def get_latest_image_tags(user: str, repo: str):
@@ -193,7 +227,9 @@ def check_secrets_volume():
         logger.info(f"Secrets volume found: {volume.name}")
     except docker.errors.NotFound:
         logger.critical(f"Secrets volume '{SECRETS_VOLUME}' does not exist!")
-        logger.critical("Please create the volume or check your SECRETS_VOLUME configuration.")
+        logger.critical(
+            "Please create the volume or check your SECRETS_VOLUME configuration."
+        )
         sys.exit(1)
     except docker.errors.APIError as err:
         logger.critical(f"Failed to access secrets volume: {err}")
@@ -207,25 +243,57 @@ def check_images_pulled(image: str, tags: list):
         logger.info(f"Finished pulling")
 
 
-async def create_server(game_request: GameRequest) -> int:
+async def create_server(game_request: GameRequest) -> dict:
     check_images_pulled(IMAGE_NAME, latest_tags)
     for attempt in range(MAX_CONTAINER_RETRIES):
         try:
             logger.info(f"Running '{IMAGE_NAME}' container (attempts: {attempt})...")
-            port = find_free_port()
             # IMPORTANT: make sure everything is converted to a string or you get weird json errors
+            match CONNECTION_MODE:
+                case ConnectionMode.PORTS:
+                    port = find_free_port()
+                    game_id = None
+                    ports = {
+                        f"{port}/udp": ("0.0.0.0", port),
+                        f"{port}/tcp": ("0.0.0.0", port),
+                    }
+                    labels = {}
+                    network = None
+                    volumes = (
+                        [f"{SECRETS_VOLUME}:/secrets:ro"] if SECRETS_VOLUME else []
+                    )
+                case ConnectionMode.TRAEFIK:
+                    port = TRAEFIK_GAME_PORT
+                    game_id = str(uuid.uuid4())
+                    path_prefix = f"/games/{GAME_SLUG}/{game_id}"
+                    router_name = f"gameserver-{game_id}"
+                    ports = {}
+                    labels = {
+                        "traefik.enable": "true",
+                        f"traefik.http.routers.{router_name}.rule": f"PathPrefix(`{path_prefix}`)",
+                        f"traefik.http.routers.{router_name}.entrypoints": "websecure",
+                        f"traefik.http.routers.{router_name}.tls": "true",
+                        f"traefik.http.routers.{router_name}.middlewares": f"{router_name}-strip",
+                        f"traefik.http.middlewares.{router_name}-strip.stripprefix.prefixes": path_prefix,
+                        f"traefik.http.services.{router_name}.loadbalancer.server.port": str(
+                            port
+                        ),
+                    }
+                    network = TRAEFIK_NETWORK
+                    volumes = []
             args = ["--name", game_request.name, "--port", str(port)]
+            if CONNECTION_MODE == ConnectionMode.TRAEFIK:
+                args += ["--game-id", game_id]
             if game_request.list:
                 args.append("--list")
             container = docker_client.containers.run(
                 image=f"{IMAGE_NAME}:{game_request.version}",
                 command=args,
                 tty=True,
-                ports={
-                    f"{port}/udp": ("0.0.0.0", port),
-                    f"{port}/tcp": ("0.0.0.0", port),
-                },
-                volumes=[f"{SECRETS_VOLUME}:/secrets:ro"],
+                ports=ports,
+                labels=labels,
+                network=network,
+                volumes=volumes,
                 detach=True,
             )
         except docker.errors.APIError as err:
@@ -239,12 +307,24 @@ async def create_server(game_request: GameRequest) -> int:
             for _ in range(30):
                 container.reload()
                 if container.status == "running":
-                    health = container.attrs.get("State", {}).get("Health", {}).get("Status")
+                    health = (
+                        container.attrs.get("State", {}).get("Health", {}).get("Status")
+                    )
                     if health == "healthy" or health is None:
                         # Container running successfully, save it for later
-                        logger.info(f"Server container {container.id} started and ready")
+                        logger.info(
+                            f"Server container {container.id} started and ready"
+                        )
                         containers[container.id] = container
-                        return port
+                        match CONNECTION_MODE:
+                            case ConnectionMode.TRAEFIK:
+                                logger.info(
+                                    f"Game server started with game_id={game_id}"
+                                )
+                                return {"game_id": game_id}
+                            case ConnectionMode.PORTS:
+                                logger.info(f"Game server started with port={port}")
+                                return {"port": port}
                     elif health == "unhealthy":
                         logger.error(f"Server container {container.id} is unhealthy")
                         break
@@ -254,7 +334,9 @@ async def create_server(game_request: GameRequest) -> int:
                 await asyncio.sleep(1)
 
             # If we reach here, the container failed to start properly in this attempt
-            logger.warning(f"Container {container.id} failed to reach ready state, retrying...")
+            logger.warning(
+                f"Container {container.id} failed to reach ready state, retrying..."
+            )
             try:
                 container.stop()
             except:

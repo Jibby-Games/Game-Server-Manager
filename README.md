@@ -13,8 +13,27 @@ contains other microservices for the game.
     - `name` (string) - the name of the game server for the server browser
     - `list` (bool) - if the game should appear in the server browser
     - `version` (string) - the game version to run based on the Docker image tag names (using Semantic Versioning format)
-  - Returns the following JSON if successful:
-    - `port` (int) the port the created game server is using, which the game client should connect to
+  - Returns the following JSON if successful, depending on `CONNECTION_MODE`:
+
+### `ports` mode
+The game server is bound to a host port. The client connects directly using the host IP and returned port.
+```json
+{ "port": 7000 }
+```
+
+### `traefik` mode
+The game server is routed through Traefik. The client receives a `game_id` and constructs the WebSocket URL itself, e.g.:
+`wss://<domain>/games/<slug>/<game_id>/ws`
+```json
+{ "game_id": "550e8400-e29b-41d4-a716-446655440000" }
+```
+
+## Connection Modes
+
+| Mode | `CONNECTION_MODE` | How it works |
+|---|---|---|
+| Ports | `ports` | Game server containers bind a host port in the `GAME_SERVER_PORT_MIN`–`GAME_SERVER_PORT_MAX` range. TLS is handled by the game server using certs from `SECRETS_VOLUME`. |
+| Traefik | `traefik` | Game server containers attach to the Traefik network with no published ports. Traefik routes `wss://<domain>/games/<slug>/<game_id>/ws` to the container and strips the path prefix before forwarding. TLS is terminated by Traefik — game containers receive plain WebSocket connections. |
 
 # Requirements
 The following must be installed and setup to use this repo correctly:

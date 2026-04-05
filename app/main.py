@@ -371,7 +371,7 @@ async def create_server(game_request: GameRequest) -> dict:
                                     f"Game server started with game_id={game_id}"
                                 )
                                 # Add a small delay to give Traefik time to start routing to the new container
-                                await asyncio.sleep(1)
+                                await asyncio.sleep(3)
                                 return {"game_id": game_id}
                             case ConnectionMode.PORTS:
                                 logger.info(f"Game server started with port={port}")

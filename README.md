@@ -25,7 +25,7 @@ The game server is bound to a host port. The client connects directly using the 
 The game server is routed through Traefik. The client receives a `game_id` and constructs the WebSocket URL itself, e.g.:
 `wss://<domain>/games/<slug>/<game_id>/ws`
 ```json
-{ "game_id": "550e8400-e29b-41d4-a716-446655440000" }
+{ "game_id": "ABCDEF123456" }
 ```
 
 ## Connection Modes

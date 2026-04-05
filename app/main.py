@@ -63,6 +63,8 @@ TRAEFIK_NETWORK: str = os.getenv("TRAEFIK_NETWORK", "frontend")
 # Fixed port that game servers listen on internally, Traefik will route to this port on the container
 TRAEFIK_GAME_PORT: int = int(os.getenv("TRAEFIK_GAME_PORT", "31400"))
 GAME_SLUG: str = os.getenv("GAME_SLUG", "flappy-race")
+# Optional host domain; when set, adds Host() to Traefik router rules so TLS SNI resolves correctly
+TRAEFIK_HOST: str = os.getenv("TRAEFIK_HOST", "")
 LOCAL_IMAGES: bool = os.getenv("LOCAL_IMAGES", "false").lower() in ("true", "1", "yes")
 
 # Constants
@@ -93,7 +95,8 @@ LOCAL_IMAGES: {LOCAL_IMAGES}
 SECRETS_VOLUME: {SECRETS_VOLUME}
 GAME_SERVER_PORT_RANGE: {GAME_SERVER_PORT_MIN}-{GAME_SERVER_PORT_MAX}
 TRAEFIK_NETWORK: {TRAEFIK_NETWORK}
-GAME_SLUG: {GAME_SLUG}"""
+GAME_SLUG: {GAME_SLUG}
+TRAEFIK_HOST: {TRAEFIK_HOST}"""
     return msg
 
 
@@ -309,9 +312,14 @@ async def create_server(game_request: GameRequest) -> dict:
                     path_prefix = f"/games/{GAME_SLUG}/{game_id}"
                     router_name = f"gameserver-{game_id}"
                     ports = {}
+                    traefik_rule = (
+                        f"Host(`{TRAEFIK_HOST}`) && PathPrefix(`{path_prefix}`)"
+                        if TRAEFIK_HOST
+                        else f"PathPrefix(`{path_prefix}`)"
+                    )
                     labels = {
                         "traefik.enable": "true",
-                        f"traefik.http.routers.{router_name}.rule": f"PathPrefix(`{path_prefix}`)",
+                        f"traefik.http.routers.{router_name}.rule": traefik_rule,
                         f"traefik.http.routers.{router_name}.entrypoints": "websecure",
                         f"traefik.http.routers.{router_name}.tls": "true",
                         f"traefik.http.routers.{router_name}.middlewares": f"{router_name}-strip",

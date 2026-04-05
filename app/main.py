@@ -2,7 +2,8 @@ import logging
 import os
 import sys
 import asyncio
-import uuid
+import string
+import secrets
 from contextlib import asynccontextmanager
 from enum import Enum
 from importlib.metadata import version
@@ -67,6 +68,13 @@ LOCAL_IMAGES: bool = os.getenv("LOCAL_IMAGES", "false").lower() in ("true", "1",
 # Constants
 DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"
 IMAGE_NAME = f"{DOCKER_USER}/{DOCKER_REPO}"
+GAME_ID_ALPHABET = string.ascii_uppercase + "23456789"
+GAME_ID_LENGTH = 8
+
+
+def generate_game_id() -> str:
+    return "".join(secrets.choice(GAME_ID_ALPHABET) for _ in range(GAME_ID_LENGTH))
+
 
 # Load logger
 log.init_loggers(__name__)
@@ -297,7 +305,7 @@ async def create_server(game_request: GameRequest) -> dict:
                     )
                 case ConnectionMode.TRAEFIK:
                     port = TRAEFIK_GAME_PORT
-                    game_id = str(uuid.uuid4())
+                    game_id = generate_game_id()
                     path_prefix = f"/games/{GAME_SLUG}/{game_id}"
                     router_name = f"gameserver-{game_id}"
                     ports = {}

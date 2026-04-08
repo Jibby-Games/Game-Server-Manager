@@ -11,10 +11,7 @@ from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
 
 import docker
 import requests
-import requests.packages.urllib3
 import semantic_version as semver
-
-requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
 from app.config import log
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
@@ -73,7 +70,6 @@ LOCAL_IMAGES: bool = os.getenv("LOCAL_IMAGES", "false").lower() in ("true", "1",
 # Constants
 DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"
 IMAGE_NAME = f"{DOCKER_USER}/{DOCKER_REPO}"
-# Remove some characters like 0 and 1 to avoid confusion
 GAME_ID_ALPHABET = string.ascii_uppercase + "23456789"
 GAME_ID_LENGTH = 8
 
@@ -290,30 +286,6 @@ def check_images_pulled(image: str, tags: list):
         logger.info(f"Finished pulling")
 
 
-async def wait_for_traefik_router(router_name: str, path_prefix: str, timeout: int = 10):
-    """Wait until Traefik is actually serving the route over HTTPS.
-
-    Probes the route directly via the Traefik container on the Docker network
-    (https://traefik<path_prefix>) so we know the route is live before returning,
-    not just that the container label exists.
-    """
-    # Traefik is reachable at its container name on the TRAEFIK_NETWORK
-    probe_url = f"https://traefik{path_prefix}"
-    headers = {"Host": TRAEFIK_HOST} if TRAEFIK_HOST else {}
-    for _ in range(timeout):
-        try:
-            resp = requests.get(probe_url, headers=headers, timeout=2, verify=False)
-            # Traefik's own "no route" 404 has this exact body.
-            # Any other response means Traefik has picked up the route.
-            if not (resp.status_code == 404 and resp.text.strip() == "404 page not found"):
-                logger.info(f"Traefik router '{router_name}' is ready")
-                return
-        except requests.exceptions.RequestException:
-            pass
-        await asyncio.sleep(1)
-    logger.warning(f"Traefik router '{router_name}' not ready after {timeout}s, continuing anyway")
-
-
 async def create_server(game_request: GameRequest) -> dict:
     if not LOCAL_IMAGES:
         check_images_pulled(IMAGE_NAME, latest_tags)
@@ -398,7 +370,8 @@ async def create_server(game_request: GameRequest) -> dict:
                                 logger.info(
                                     f"Game server started with game_id={game_id}"
                                 )
-                                await wait_for_traefik_router(router_name, path_prefix)
+                                # Add a small delay to give Traefik time to start routing to the new container
+                                await asyncio.sleep(3)
                                 return {"game_id": game_id}
                             case ConnectionMode.PORTS:
                                 logger.info(f"Game server started with port={port}")

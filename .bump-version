@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Called by the bump-version tool when a new version tag is created.
+new_version=$1
+
+# Update pyproject.toml version
+sed -i "s/^version = \".*\"/version = \"$new_version\"/" pyproject.toml
+# Update lock file
+uv lock

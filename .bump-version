@@ -7,3 +7,5 @@ new_version=$1
 sed -i "s/^version = \".*\"/version = \"$new_version\"/" pyproject.toml
 # Update lock file
 uv lock
+git add pyproject.toml uv.lock
+git commit -m "feat: bump version to $new_version"

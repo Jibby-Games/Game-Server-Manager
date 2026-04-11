@@ -1,6 +1,6 @@
 [project]
 name = "game-server-manager"
-version = "v0.4.5"
+version = "v0.4.6"
 requires-python = ">=3.13"
 dependencies = [
     "docker",

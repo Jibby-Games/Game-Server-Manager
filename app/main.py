@@ -71,7 +71,7 @@ LOCAL_IMAGES: bool = os.getenv("LOCAL_IMAGES", "false").lower() in ("true", "1",
 DOCKER_HUB_URL = "https://hub.docker.com/v2/namespaces/{user}/repositories/{repo}/tags/"
 IMAGE_NAME = f"{DOCKER_USER}/{DOCKER_REPO}"
 GAME_ID_ALPHABET = string.ascii_uppercase + "23456789"
-GAME_ID_LENGTH = 8
+GAME_ID_LENGTH = 4
 
 
 def generate_game_id() -> str:
